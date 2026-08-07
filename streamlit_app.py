@@ -17,12 +17,21 @@ if api_key and client_id and pin and token:
         
         if data and data.get('status'):
             st.success("Connected to Angel One Successfully!")
-            symbol = st.text_input("Enter Stock Symbol (e.g. SBIN, RELIANCE):", "").upper()
+            
+            symbol = st.text_input("Enter Symbol (e.g. SBIN-EQ, NIFTY):", "").upper()
+            
             if st.button("Get Live Price"):
                 if symbol:
                     st.write(f"Fetching live price for {symbol}...")
+                    try:
+                        # सामान्य शेयरों या इंडेक्स के लिए ltpData कॉल करना
+                        # (नोट: इसके लिए सही एक्सचेंज और टोकन या सिंबल फॉर्मेट की जरूरत होती है)
+                        ltp_data = obj.ltpData("NSE", symbol, "EXACT_SYMBOL_OR_TOKEN")
+                        st.write(ltp_data)
+                    except Exception as err:
+                        st.error(f"Could not fetch price: {err}")
                 else:
-                    st.warning("Please enter a valid stock symbol.")
+                    st.warning("Please enter a valid symbol.")
         else:
             st.error(f"Login Failed: {data.get('message', 'Unknown error')}")
             
@@ -30,4 +39,3 @@ if api_key and client_id and pin and token:
         st.error(f"Error: {e}")
 else:
     st.warning("Please configure API_KEY, CLIENT_ID, PIN, and TOTP_TOKEN in Streamlit Secrets.")
-    
