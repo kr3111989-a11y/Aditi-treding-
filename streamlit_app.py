@@ -32,23 +32,28 @@ if api_key and client_id and pin and token:
                 df = load_script_master()
                 
             if not df.empty:
-                symbol = st.text_input("Enter Symbol (e.g. RELIANCE-EQ, NIFTY):", "").upper()
+                user_input = st.text_input("Enter Symbol (e.g. RELIANCE-EQ, NIFTY):", "").strip().upper()
                 
                 if st.button("Get Live Price"):
-                    if symbol:
-                        # डेटाफ्रेम में सिंबल खोजना
-                        matched = df[df['symbol'] == symbol]
+                    if user_input:
+                        # आंशिक मिलान (Partial matching) ताकि नाम थोड़ा आगे-पीछे होने पर भी मिल जाए
+                        matched = df[df['symbol'].str.contains(user_input, na=False)]
+                        
                         if not matched.empty:
                             exchange = matched.iloc[0]['exch_seg']
                             token_id = matched.iloc[0]['token']
+                            exact_symbol = matched.iloc[0]['symbol']
+                            
+                            st.write(f"Found: {exact_symbol} (Exchange: {exchange})")
                             
                             try:
-                                ltp_data = obj.ltpData(exchange, symbol, token_id)
-                                st.write(ltp_data)
+                                ltp_data = obj.ltpData(exchange, exact_symbol, token_id)
+                                st.success("Live Price Fetched Successfully!")
+                                st.json(ltp_data)
                             except Exception as err:
                                 st.error(f"Error fetching price: {err}")
                         else:
-                            st.warning("Symbol not found! Please check the exact symbol name (e.g., RELIANCE-EQ).")
+                            st.warning("Symbol not found in database. Try typing 'RELIANCE-EQ' or 'NIFTY'.")
                     else:
                         st.warning("Please enter a valid symbol.")
             else:
