@@ -1,6 +1,8 @@
 import streamlit as st
 from SmartApi import SmartConnect
 import pyotp
+import requests
+import pandas as pd
 
 st.title("Aditi Trading Dashboard - Full Market")
 
@@ -8,6 +10,14 @@ api_key = st.secrets.get("API_KEY")
 client_id = st.secrets.get("CLIENT_ID")
 pin = st.secrets.get("PIN")
 token = st.secrets.get("TOTP_TOKEN")
+
+@st.cache_data
+def load_script_master():
+    url = "https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json"
+    response = requests.get(url)
+    if response.status_code == 200:
+        return pd.DataFrame(response.json())
+    return pd.DataFrame()
 
 if api_key and client_id and pin and token:
     try:
@@ -18,20 +28,31 @@ if api_key and client_id and pin and token:
         if data and data.get('status'):
             st.success("Connected to Angel One Successfully!")
             
-            symbol = st.text_input("Enter Symbol (e.g. SBIN-EQ, NIFTY):", "").upper()
-            
-            if st.button("Get Live Price"):
-                if symbol:
-                    st.write(f"Fetching live price for {symbol}...")
-                    try:
-                        # सामान्य शेयरों या इंडेक्स के लिए ltpData कॉल करना
-                        # (नोट: इसके लिए सही एक्सचेंज और टोकन या सिंबल फॉर्मेट की जरूरत होती है)
-                        ltp_data = obj.ltpData("NSE", symbol, "EXACT_SYMBOL_OR_TOKEN")
-                        st.write(ltp_data)
-                    except Exception as err:
-                        st.error(f"Could not fetch price: {err}")
-                else:
-                    st.warning("Please enter a valid symbol.")
+            with st.spinner("Loading Market Database..."):
+                df = load_script_master()
+                
+            if not df.empty:
+                symbol = st.text_input("Enter Symbol (e.g. RELIANCE-EQ, NIFTY):", "").upper()
+                
+                if st.button("Get Live Price"):
+                    if symbol:
+                        # डेटाफ्रेम में सिंबल खोजना
+                        matched = df[df['symbol'] == symbol]
+                        if not matched.empty:
+                            exchange = matched.iloc[0]['exch_seg']
+                            token_id = matched.iloc[0]['token']
+                            
+                            try:
+                                ltp_data = obj.ltpData(exchange, symbol, token_id)
+                                st.write(ltp_data)
+                            except Exception as err:
+                                st.error(f"Error fetching price: {err}")
+                        else:
+                            st.warning("Symbol not found! Please check the exact symbol name (e.g., RELIANCE-EQ).")
+                    else:
+                        st.warning("Please enter a valid symbol.")
+            else:
+                st.error("Could not load Scrip Master database.")
         else:
             st.error(f"Login Failed: {data.get('message', 'Unknown error')}")
             
