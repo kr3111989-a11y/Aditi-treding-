@@ -1,4 +1,6 @@
+streamlit
 smartapi-python
-websocket-client
 pyotp
-
+requests
+pandas
+logzero
