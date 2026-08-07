@@ -36,8 +36,10 @@ if api_key and client_id and pin and token:
                 
                 if st.button("Get Live Price"):
                     if user_input:
-                        # आंशिक मिलान (Partial matching) ताकि नाम थोड़ा आगे-पीछे होने पर भी मिल जाए
-                        matched = df[df['symbol'].str.contains(user_input, na=False)]
+                        # छोटे-बड़े या आधे-अधूरे नाम को भी डेटाबेस में आसानी से ढूंढने के लिए
+                        matched = df[df['symbol'] == user_input]
+                        if matched.empty:
+                            matched = df[df['symbol'].str.contains(user_input, na=False)]
                         
                         if not matched.empty:
                             exchange = matched.iloc[0]['exch_seg']
@@ -53,7 +55,7 @@ if api_key and client_id and pin and token:
                             except Exception as err:
                                 st.error(f"Error fetching price: {err}")
                         else:
-                            st.warning("Symbol not found in database. Try typing 'RELIANCE-EQ' or 'NIFTY'.")
+                            st.warning("Symbol not found in database. Please check the spelling.")
                     else:
                         st.warning("Please enter a valid symbol.")
             else:
