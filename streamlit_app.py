@@ -5,7 +5,22 @@ import requests
 import pandas as pd
 
 st.set_page_config(layout="wide")
-st.title("Aditi Trading Dashboard - Pro Option Chain")
+
+# एंजेल वन जैसा डार्क थीम और स्टाइल सेट करना
+st.markdown("""
+    <style>
+    .main { background-color: #0e1117; color: #ffffff; }
+    .stSelectbox, .stButton { font-size: 16px; }
+    table { width: 100%; border-collapse: collapse; background-color: #161b22; color: #fff; }
+    th { background-color: #21262d; color: #8b949e; text-align: center; padding: 10px; border: 1px solid #30363d; }
+    td { text-align: center; padding: 8px; border: 1px solid #30363d; }
+    .call-side { background-color: rgba(35, 134, 54, 0.15); color: #3fb950; font-weight: bold; }
+    .put-side { background-color: rgba(248, 81, 73, 0.15); color: #f85149; font-weight: bold; }
+    .strike-price { background-color: #21262d; color: #f0f6fc; font-weight: bold; font-size: 16px; }
+    </style>
+""", unsafe_allow_html=True)
+
+st.title("⚡ Aditi Angel One Pro Option Chain")
 
 api_key = st.secrets.get("API_KEY")
 client_id = st.secrets.get("CLIENT_ID")
@@ -27,7 +42,7 @@ if api_key and client_id and pin and token:
         data = obj.generateSession(client_id, pin, totp)
         
         if data and data.get('status'):
-            st.success("Connected to Angel One Successfully!")
+            st.success("🟢 Connected to Angel One Successfully!")
             
             with st.spinner("Loading Market Database..."):
                 df = load_script_master()
@@ -46,8 +61,8 @@ if api_key and client_id and pin and token:
                     with col2:
                         expiry_choice = st.selectbox("Select Expiry:", expiries)
                     
-                    if st.button("Load App-Style Option Chain"):
-                        with st.spinner("Fetching Live Chain Data..."):
+                    if st.button("🚀 Load Angel One Style Chain"):
+                        with st.spinner("Fetching Live Prices..."):
                             filtered = index_options[index_options['expiry'] == expiry_choice]
                             filtered['strike'] = pd.to_numeric(filtered['strike'], errors='coerce') / 100.0
                             
@@ -62,13 +77,22 @@ if api_key and client_id and pin and token:
                             ).sort_values('strike').reset_index(drop=True)
                             
                             if not merged.empty:
-                                # ऐप की तरह बीच के मुख्य स्ट्राइक्स दिखाने के लिए स्लाइस करना
+                                # ऐप की तरह बीच के 14 स्ट्राइक्स लेना ताकि स्पीड तेज रहे
                                 mid_len = len(merged) // 2
                                 start_idx = max(0, mid_len - 7)
                                 end_idx = min(len(merged), mid_len + 7)
                                 sub_merged = merged.iloc[start_idx:end_idx].copy()
                                 
-                                ce_ltps, pe_ltps = [], []
+                                table_html = """
+                                <table>
+                                    <tr>
+                                        <th>Call Symbol</th>
+                                        <th>Call LTP (₹)</th>
+                                        <th>Strike Price</th>
+                                        <th>Put LTP (₹)</th>
+                                        <th>Put Symbol</th>
+                                    </tr>
+                                """
                                 
                                 for index, row in sub_merged.iterrows():
                                     try:
@@ -83,23 +107,23 @@ if api_key and client_id and pin and token:
                                     except:
                                         pe_ltp = 0.0
                                         
-                                    ce_ltps.append(ce_ltp)
-                                    pe_ltps.append(pe_ltp)
+                                    table_html += f"""
+                                    <tr>
+                                        <td style="color: #8b949e; font-size: 12px;">{row['CE_Symbol']}</td>
+                                        <td class="call-side">₹{ce_ltp}</td>
+                                        <td class="strike-price">{row['strike']}</td>
+                                        <td class="put-side">₹{pe_ltp}</td>
+                                        <td style="color: #8b949e; font-size: 12px;">{row['PE_Symbol']}</td>
+                                    </tr>
+                                    """
                                     
-                                sub_merged['Call LTP'] = ce_ltps
-                                sub_merged['Put LTP'] = pe_ltps
-                                
-                                # बिल्कुल एंजेल वन ऐप जैसा कॉलम लेआउट (Call -> Strike -> Put)
-                                app_style_df = sub_merged[['Call LTP', 'CE_Symbol', 'strike', 'PE_Symbol', 'Put LTP']]
-                                app_style_df.columns = ['Call LTP', 'Call Symbol', 'Strike Price', 'Put Symbol', 'Put LTP']
-                                
-                                st.write(f"### 📊 Option Chain Layout for {index_choice} ({expiry_choice})")
-                                st.dataframe(app_style_df, use_container_width=True, hide_index=True)
-                                st.success("ऑप्शन चेन अब ऐप के लेआउट फॉर्मेट में लोड हो गई है!")
+                                table_html += "</table>"
+                                st.markdown(table_html, unsafe_allow_html=True)
+                                st.success("✨ ऑप्शन चेन अब बिल्कुल एंजेल वन के डार्क लेआउट फॉर्मेट में दिख रही है!")
                             else:
-                                st.warning("No option data found.")
+                                st.warning("No data found.")
                 else:
-                    st.warning("No data available.")
+                    st.warning("No options data available.")
             else:
                 st.error("Could not load database.")
         else:
