@@ -4,7 +4,7 @@ import pyotp
 import requests
 import pandas as pd
 
-st.title("Aditi Trading Dashboard - Market")
+st.title("Aditi Trading Dashboard - Option Chain Analysis")
 
 api_key = st.secrets.get("API_KEY")
 client_id = st.secrets.get("CLIENT_ID")
@@ -32,45 +32,26 @@ if api_key and client_id and pin and token:
                 df = load_script_master()
                 
             if not df.empty:
-                user_input = st.text_input("Enter Symbol / Option (e.g. RELIANCE-EQ, NIFTY, 24650CE):", "").strip().upper()
+                # इंडेक्स चुनने के लिए ऑप्शन
+                index_choice = st.selectbox("Select Index for Option Chain:", ["NIFTY", "BANKNIFTY"])
                 
-                if st.button("Get Live Price"):
-                    if user_input:
-                        # सामान्य शॉर्टकट और ऑप्शन फॉर्मेट ठीक करना
-                        if user_input in ["NIFTY 50", "NIFTY50"]:
-                            user_input = "NIFTY"
-                        elif user_input in ["BANK NIFTY", "BANKNIFTY"]:
-                            user_input = "BANKNIFTY"
+                if st.button("Get Option Chain"):
+                    with st.spinner(f"Fetching Option Chain for {index_choice}..."):
+                        # NFO सेगमेंट से उस इंडेक्स के ऑप्शंस को फिल्टर करना
+                        option_df = df[(df['name'] == index_choice) & (df['exch_seg'] == 'NFO')]
                         
-                        # अगर यूजर ने स्ट्राइक प्राइस या CE/PE लिखा हो (जैसे NIFTY 24650 CE)
-                        # तो स्पेस हटाकर NIFTY से जोड़ देना
-                        if "CE" in user_input or "PE" in user_input:
-                            user_input = user_input.replace(" ", "")
-                            if not user_input.startswith("NIFTY") and not user_input.startswith("BANKNIFTY"):
-                                user_input = "NIFTY" + user_input
-                        
-                        # डेटाबेस में खोजना
-                        matched = df[df['symbol'] == user_input]
-                        if matched.empty:
-                            matched = df[df['symbol'].str.contains(user_input, na=False)]
-                        
-                        if not matched.empty:
-                            exchange = matched.iloc[0]['exch_seg']
-                            token_id = matched.iloc[0]['token']
-                            exact_symbol = matched.iloc[0]['symbol']
+                        if not option_df.empty:
+                            # शुरुआती कुछ स्ट्राइक्स या डेटा दिखाने के लिए टेबल तैयार करना
+                            st.write(f"Total Option Contracts found for {index_choice}: {len(option_df)}")
                             
-                            st.write(f"Found: {exact_symbol} (Exchange: {exchange})")
+                            # यूजर को आसानी से देखने के लिए मुख्य कॉलम दिखाना
+                            display_cols = ['symbol', 'strike', 'instrumenttype', 'expiry', 'token']
+                            available_cols = [col for col in display_cols if col in option_df.columns]
                             
-                            try:
-                                ltp_data = obj.ltpData(exchange, exact_symbol, token_id)
-                                st.success("Live Price Fetched Successfully!")
-                                st.json(ltp_data)
-                            except Exception as err:
-                                st.error(f"Error fetching price: {err}")
+                            st.dataframe(option_df[available_cols].head(50))
+                            st.info("ऊपर दिए गए सिंबल या टोकन का उपयोग करके आप लाइव एलटीपी (LTP) ट्रैक कर सकते हैं।")
                         else:
-                            st.warning("Symbol not found in database. Try writing like 'NIFTY24650CE'.")
-                    else:
-                        st.warning("Please enter a valid symbol.")
+                            st.warning("Option chain data not found.")
             else:
                 st.error("Could not load Scrip Master database.")
         else:
