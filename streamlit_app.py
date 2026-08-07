@@ -5,7 +5,7 @@ import requests
 import pandas as pd
 
 st.set_page_config(layout="wide")
-st.title("Aditi Trading Dashboard - Smart Option Chain")
+st.title("Aditi Trading Dashboard - Live Option Chain")
 
 api_key = st.secrets.get("API_KEY")
 client_id = st.secrets.get("CLIENT_ID")
@@ -33,7 +33,6 @@ if api_key and client_id and pin and token:
                 df = load_script_master()
                 
             if not df.empty:
-                # सभी उपलब्ध इंडेक्स की लिस्ट निकालना
                 all_indices = sorted(df[df['exch_seg'] == 'NFO']['name'].dropna().unique())
                 default_idx = all_indices.index("NIFTY") if "NIFTY" in all_indices else 0
                 
@@ -41,43 +40,68 @@ if api_key and client_id and pin and token:
                 with col1:
                     index_choice = st.selectbox("Select Index:", all_indices, index=default_idx)
                 
-                # उस इंडेक्स की उपलब्ध एक्सपायरी डेट्स निकालना
                 index_options = df[(df['name'] == index_choice) & (df['exch_seg'] == 'NFO')]
                 if not index_options.empty:
                     expiries = sorted(index_options['expiry'].dropna().unique())
                     with col2:
                         expiry_choice = st.selectbox("Select Expiry:", expiries)
                     
-                    if st.button("Load Option Chain View"):
-                        with st.spinner("Formatting Option Chain..."):
-                            # चुनी गई एक्सपायरी और इंडेक्स के कॉन्ट्रैक्ट्स
+                    if st.button("Load Live Option Chain"):
+                        with st.spinner("Fetching Live Prices..."):
                             filtered = index_options[index_options['expiry'] == expiry_choice]
-                            
-                            # स्ट्राइक प्राइस को सही फॉर्मेट में बदलना
                             filtered['strike'] = pd.to_numeric(filtered['strike'], errors='coerce') / 100.0
                             
-                            # CE और PE को अलग करना
                             ce_df = filtered[filtered['symbol'].str.endswith('CE', na=False)]
                             pe_df = filtered[filtered['symbol'].str.endswith('PE', na=False)]
                             
-                            # स्ट्राइक के हिसाब से मर्ज करना ताकि ऐप जैसा व्यू मिले
                             merged = pd.merge(
                                 ce_df[['strike', 'symbol', 'token']].rename(columns={'symbol': 'CE_Symbol', 'token': 'CE_Token'}),
                                 pe_df[['strike', 'symbol', 'token']].rename(columns={'symbol': 'PE_Symbol', 'token': 'PE_Token'}),
                                 on='strike',
                                 how='inner'
-                            ).sort_values('strike')
+                            ).sort_values('strike').reset_index(drop=True)
                             
                             if not merged.empty:
-                                st.write(f"### Option Chain for {index_choice} (Expiry: {expiry_choice})")
-                                st.dataframe(merged.reset_index(drop=True), use_container_width=True)
-                                st.info("यह ऑप्शन चेन व्यू अब स्ट्राइक प्राइस के हिसाब से व्यवस्थित है।")
+                                # स्पीड और परफॉरमेंस के लिए बीच के 15 स्ट्राइक्स चुनना (या आप चाहें तो पूरी लिस्ट ले सकते हैं)
+                                mid_len = len(merged) // 2
+                                start_idx = max(0, mid_len - 8)
+                                end_idx = min(len(merged), mid_len + 8)
+                                sub_merged = merged.iloc[start_idx:end_idx].copy()
+                                
+                                ce_ltps = []
+                                pe_ltps = []
+                                
+                                # लाइव LTP फेच करना
+                                for index, row in sub_merged.iterrows():
+                                    try:
+                                        ce_res = obj.ltpData("NFO", row['CE_Symbol'], row['CE_Token'])
+                                        ce_ltp = ce_res['data']['ltp'] if ce_res and 'data' in ce_res else 0.0
+                                    except:
+                                        ce_ltp = 0.0
+                                        
+                                    try:
+                                        pe_res = obj.ltpData("NFO", row['PE_Symbol'], row['PE_Token'])
+                                        pe_ltp = pe_res['data']['ltp'] if pe_res and 'data' in pe_res else 0.0
+                                    except:
+                                        pe_ltp = 0.0
+                                        
+                                    ce_ltps.append(ce_ltp)
+                                    pe_ltps.append(pe_ltp)
+                                    
+                                sub_merged['CE_LTP'] = ce_ltps
+                                sub_merged['PE_LTP'] = pe_ltps
+                                
+                                display_df = sub_merged[['CE_LTP', 'CE_Symbol', 'strike', 'PE_Symbol', 'PE_LTP']]
+                                
+                                st.write(f"### Live Option Chain for {index_choice} (Expiry: {expiry_choice})")
+                                st.dataframe(display_df, use_container_width=True)
+                                st.success("लाइव LTP सफलतापूर्वक लोड हो गए हैं!")
                             else:
-                                st.warning("No matching CE/PE data found for this expiry.")
+                                st.warning("No matching data found.")
                 else:
-                    st.warning("No options data available for this index.")
+                    st.warning("No options data available.")
             else:
-                st.error("Could not load Scrip Master database.")
+                st.error("Could not load database.")
         else:
             st.error(f"Login Failed: {data.get('message', 'Unknown error')}")
             
