@@ -1,120 +1,71 @@
-import streamlit as st
-from SmartApi import SmartConnect
-import pyotp
-import requests
-import pandas as pd
-import time
-
-st.set_page_config(layout="wide")
-st.title("⚡ Aditi AI Trading Bot - Option Chain & Greeks Engine")
-
-api_key = st.secrets.get("API_KEY")
-client_id = st.secrets.get("CLIENT_ID")
-pin = st.secrets.get("PIN")
-token = st.secrets.get("TOTP_TOKEN")
-
-@st.cache_data(ttl=86400)
-def load_script_master():
-    url = "https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json"
-    response = requests.get(url)
-    if response.status_code == 200:
-        return pd.DataFrame(response.json())
-    return pd.DataFrame()
-
-if api_key and client_id and pin and token:
-    try:
-        clean_token = str(token).strip()
-        obj = SmartConnect(api_key=api_key)
-        totp = pyotp.TOTP(clean_token).now()
-        data = obj.generateSession(client_id, pin, totp)
+class TradingAIBrain:
+    def __init__(self):
+        self.budget = 2000  # आपका फिक्स ट्रेडिंग बजट नियम
         
-        if data and data.get('status'):
-            st.success("🟢 Turbo Engine Connected & Running Successfully!")
+    def analyze_market_conditions(self, market_data):
+        """
+        यह बॉट का 'दिमाग' है जो 10 अलग-अलग लेयर्स पर मार्केट को परखेगा।
+        """
+        score = 0
+        reasons = []
+
+        # 1. ग्लोबल और सेंटीमेंट चेक (Global Cues)
+        if market_data.get('global_trend') == 'Bullish':
+            score += 1
+            reasons.append("Global market is supportive.")
+
+        # 2. टाइम-बेस्ड फिल्टर (No-Trade Zone check)
+        if market_data.get('is_no_trade_time', False):
+            return "HOLD", "Market is in No-Trade Zone (Opening volatility)."
+
+        # 3. प्राइस एक्शन और ओपनिंग रेंज ब्रेकआउट (ORB)
+        if market_data.get('price_breakout') == 'High_Broken':
+            score += 2
+            reasons.append("Opening range high broken.")
+
+        # 4. टेक्निकल इंडिकेटर्स (VWAP & RSI)
+        if market_data.get('price', 0) > market_data.get('vwap', 0):
+            score += 1
+            reasons.append("Price is above VWAP.")
             
-            df = load_script_master()
-                
-            if not df.empty:
-                all_indices = sorted(df[df['exch_seg'] == 'NFO']['name'].dropna().unique())
-                default_idx = all_indices.index("NIFTY") if "NIFTY" in all_indices else 0
-                
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    index_choice = st.selectbox("Select Index:", all_indices, index=default_idx)
-                
-                index_options = df[(df['name'] == index_choice) & (df['exch_seg'] == 'NFO')]
-                if not index_options.empty:
-                    expiries = sorted(index_options['expiry'].dropna().unique())
-                    with col2:
-                        expiry_choice = st.selectbox("Select Expiry:", expiries)
-                    
-                    with col3:
-                        st.write("")
-                        fetch_clicked = st.button("🚀 Load Option Chain & Greeks")
-                    
-                    if fetch_clicked:
-                        with st.spinner("Fetching market data and calculating metrics..."):
-                            filtered = index_options[index_options['expiry'] == expiry_choice]
-                            filtered['strike'] = pd.to_numeric(filtered['strike'], errors='coerce') / 100.0
-                            
-                            ce_df = filtered[filtered['symbol'].str.endswith('CE', na=False)]
-                            pe_df = filtered[filtered['symbol'].str.endswith('PE', na=False)]
-                            
-                            merged = pd.merge(
-                                ce_df[['strike', 'symbol', 'token']].rename(columns={'symbol': 'CE_Symbol', 'token': 'CE_Token'}),
-                                pe_df[['strike', 'symbol', 'token']].rename(columns={'symbol': 'PE_Symbol', 'token': 'PE_Token'}),
-                                on='strike',
-                                how='inner'
-                            ).sort_values('strike').reset_index(drop=True)
-                            
-                            if not merged.empty:
-                                mid_len = len(merged) // 2
-                                start_idx = max(0, mid_len - 6)
-                                end_idx = min(len(merged), mid_len + 6)
-                                sub_merged = merged.iloc[start_idx:end_idx].copy()
-                                
-                                table_data = []
-                                for index, row in sub_merged.iterrows():
-                                    ce_ltp, pe_ltp = 0.0, 0.0
-                                    try:
-                                        res_ce = obj.ltpData("NFO", row['CE_Symbol'], row['CE_Token'])
-                                        if res_ce and 'data' in res_ce:
-                                            ce_ltp = res_ce['data'].get('ltp', 0.0)
-                                    except:
-                                        pass
-                                        
-                                    try:
-                                        res_pe = obj.ltpData("NFO", row['PE_Symbol'], row['PE_Token'])
-                                        if res_pe and 'data' in res_pe:
-                                            pe_ltp = res_pe['data'].get('ltp', 0.0)
-                                    except:
-                                        pass
-                                    
-                                    # यहाँ ऑप्शन ग्रीक्स (डेल्टा, गामा, थीटा, वेगा) के लिए बेस स्ट्रक्चर जोड़ा गया है
-                                    table_data.append({
-                                        "CE Delta": round(ce_ltp * 0.002, 2), # ऐच्छिक ग्रीक अनुमानित कैलकुलेशन
-                                        "Call LTP": ce_ltp,
-                                        "Call Symbol": row['CE_Symbol'],
-                                        "Strike Price": row['strike'],
-                                        "Put Symbol": row['PE_Symbol'],
-                                        "Put LTP": pe_ltp,
-                                        "PE Delta": round(pe_ltp * -0.002, 2)
-                                    })
-                                    
-                                final_df = pd.DataFrame(table_data)
-                                final_df = final_df[["CE Delta", "Call LTP", "Call Symbol", "Strike Price", "Put Symbol", "Put LTP", "PE Delta"]]
-                                
-                                st.success(f"✨ Option Chain & Greeks Loaded at {time.strftime('%H:%M:%S')}")
-                                st.dataframe(final_df, use_container_width=True, hide_index=True)
-                            else:
-                                st.warning("No contracts found.")
-                else:
-                    st.warning("No index options available.")
-            else:
-                st.error("Failed to load Scrip Master database.")
+        if 40 <= market_data.get('rsi', 50) <= 60:
+            score += 1
+            reasons.append("RSI is in healthy zone.")
+
+        # 5. ऑप्शन चेन और PCR (Put-Call Ratio) विश्लेषण
+        pcr = market_data.get('pcr', 1.0)
+        if pcr > 1.2:
+            score += 2
+            reasons.append(f"PCR is bullish ({pcr}).")
+        elif pcr < 0.8:
+            score -= 2
+            reasons.append(f"PCR is bearish ({pcr}).")
+
+        # 6. ओपेन इंटरेस्ट (OI) वेलोसिटी और स्पाइक
+        if market_data.get('oi_spike') == 'Call_Unwinding':
+            score += 1
+            reasons.append("Call unwinding detected (Bullish).")
+
+        # 7. वोलटिलिटी और IV क्रश चेक
+        if market_data.get('iv_status') == 'High_IV_Crush_Expected':
+            return "AVOID", "Risk of IV Crush, do not buy options."
+
+        # 8. मल्टी-टाइमफ्रेम कन्फ्लुएंस
+        if not market_data.get('higher_timeframe_support', True):
+            return "AVOID", "Higher timeframe resistance reached, trap risk!"
+
+        # 9. ट्रैप डिटेक्शन (Fake Breakout check)
+        if market_data.get('is_trap', False):
+            return "AVOID", "Potential operator trap detected."
+
+        # 10. जोखिम प्रबंधन (Risk & Budget Check - आपका ₹2000 का बजट नियम)
+        if self.budget < 2000:
+            return "STOP", "Insufficient budget or limit reached."
+
+        # निर्णय लेना (Decision Matrix Based on Score)
+        if score >= 4:
+            return "BUY_CE", reasons
+        elif score <= -2:
+            return "BUY_PE", reasons
         else:
-            st.error(f"Login Failed: {data.get('message', 'Unknown error')}")
-            
-    except Exception as e:
-        st.error(f"Error: {e}")
-else:
-    st.warning("Please configure your credentials in Streamlit Secrets.")
+            return "WAIT", "Market is sideways, no clear setup."
