@@ -36,7 +36,10 @@ if api_key and client_id and pin and token:
                 
                 if st.button("Get Live Price"):
                     if user_input:
-                        # छोटे-बड़े या आधे-अधूरे नाम को भी डेटाबेस में आसानी से ढूंढने के लिए
+                        # अगर यूजर Nifty 50 या NIFTY 50 लिखे तो उसे ऑटोमैटिक NIFTY कर दें
+                        if user_input in ["NIFTY 50", "NIFTY50"]:
+                            user_input = "NIFTY"
+                            
                         matched = df[df['symbol'] == user_input]
                         if matched.empty:
                             matched = df[df['symbol'].str.contains(user_input, na=False)]
