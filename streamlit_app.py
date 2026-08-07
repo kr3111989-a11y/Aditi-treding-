@@ -4,7 +4,7 @@ import pyotp
 import requests
 import pandas as pd
 
-st.title("Aditi Trading Dashboard - Full Market")
+st.title("Aditi Trading Dashboard - Market")
 
 api_key = st.secrets.get("API_KEY")
 client_id = st.secrets.get("CLIENT_ID")
@@ -36,10 +36,19 @@ if api_key and client_id and pin and token:
                 
                 if st.button("Get Live Price"):
                     if user_input:
-                        # अगर यूजर Nifty 50 या NIFTY 50 लिखे तो उसे ऑटोमैटिक NIFTY कर दें
+                        # कॉमन नामों के शॉर्टकट और ऑटो-करेक्शन नियम
                         if user_input in ["NIFTY 50", "NIFTY50"]:
                             user_input = "NIFTY"
+                        elif user_input in ["BANK NIFTY", "BANKNIFTY"]:
+                            user_input = "BANKNIFTY"
+                        elif user_input == "TATA STEEL":
+                            user_input = "TATASTEEL"
+                        elif user_input == "TATA MOTORS":
+                            user_input = "TATAMOTORS"
+                        elif user_input == "TATA CONSUMER":
+                            user_input = "TATACONSUM"
                             
+                        # सटीक मिलान या आंशिक मिलान खोजना
                         matched = df[df['symbol'] == user_input]
                         if matched.empty:
                             matched = df[df['symbol'].str.contains(user_input, na=False)]
