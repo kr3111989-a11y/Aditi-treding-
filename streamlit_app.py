@@ -6,8 +6,9 @@ import pandas as pd
 import time
 
 st.set_page_config(layout="wide")
-st.title("⚡ Aditi Turbo AI Bot - Fast Option Chain")
+st.title("⚡ Aditi AI Trading Bot - Final Option Chain")
 
+# सीक्रेट्स लोड करना
 api_key = st.secrets.get("API_KEY")
 client_id = st.secrets.get("CLIENT_ID")
 pin = st.secrets.get("PIN")
@@ -28,7 +29,7 @@ if api_key and client_id and pin and token:
         data = obj.generateSession(client_id, pin, totp)
         
         if data and data.get('status'):
-            st.success("🟢 Turbo Connected Successfully!")
+            st.success("🟢 Angel One Connected & System Ready!")
             
             df = load_script_master()
                 
@@ -48,70 +49,69 @@ if api_key and client_id and pin and token:
                     
                     with col3:
                         st.write("")
-                        refresh_btn = st.button("⚡ Fetch Fresh Prices Now")
+                        fetch_clicked = st.button("🚀 Load & Analyze Option Chain")
                     
-                    filtered = index_options[index_options['expiry'] == expiry_choice]
-                    filtered['strike'] = pd.to_numeric(filtered['strike'], errors='coerce') / 100.0
-                    
-                    ce_df = filtered[filtered['symbol'].str.endswith('CE', na=False)]
-                    pe_df = filtered[filtered['symbol'].str.endswith('PE', na=False)]
-                    
-                    merged = pd.merge(
-                        ce_df[['strike', 'symbol', 'token']].rename(columns={'symbol': 'CE_Symbol', 'token': 'CE_Token'}),
-                        pe_df[['strike', 'symbol', 'token']].rename(columns={'symbol': 'PE_Symbol', 'token': 'PE_Token'}),
-                        on='strike',
-                        how='inner'
-                    ).sort_values('strike').reset_index(drop=True)
-                    
-                    if not merged.empty:
-                        mid_len = len(merged) // 2
-                        start_idx = max(0, mid_len - 6)
-                        end_idx = min(len(merged), mid_len + 6)
-                        sub_merged = merged.iloc[start_idx:end_idx].copy()
-                        
-                        # एक साथ सभी टोकन्स के भाव फेच करने की स्पीड ऑप्टिमाइजेशन
-                        table_data = []
-                        exchange_type = "NFO"
-                        
-                        for index, row in sub_merged.iterrows():
-                            ce_ltp, pe_ltp = 0.0, 0.0
-                            try:
-                                res_ce = obj.ltpData(exchange_type, row['CE_Symbol'], row['CE_Token'])
-                                if res_ce and 'data' in res_ce:
-                                    ce_ltp = res_ce['data'].get('ltp', 0.0)
-                            except:
-                                pass
-                                
-                            try:
-                                res_pe = obj.ltpData(exchange_type, row['PE_Symbol'], row['PE_Token'])
-                                if res_pe and 'data' in res_pe:
-                                    pe_ltp = res_pe['data'].get('ltp', 0.0)
-                            except:
-                                pass
-                                
-                            table_data.append({
-                                "Call LTP": ce_ltp,
-                                "Call Symbol": row['CE_Symbol'],
-                                "Strike Price": row['strike'],
-                                "Put Symbol": row['PE_Symbol'],
-                                "Put LTP": pe_ltp
-                            })
+                    if fetch_clicked:
+                        with st.spinner("Fetching market data..."):
+                            filtered = index_options[index_options['expiry'] == expiry_choice]
+                            filtered['strike'] = pd.to_numeric(filtered['strike'], errors='coerce') / 100.0
                             
-                        final_df = pd.DataFrame(table_data)
-                        final_df = final_df[["Call LTP", "Call Symbol", "Strike Price", "Put Symbol", "Put LTP"]]
-                        
-                        st.info(f"⚡ Data Loaded Instantly at {time.strftime('%H:%M:%S')}")
-                        st.dataframe(final_df, use_container_width=True, hide_index=True)
-                    else:
-                        st.warning("No option data found.")
+                            ce_df = filtered[filtered['symbol'].str.endswith('CE', na=False)]
+                            pe_df = filtered[filtered['symbol'].str.endswith('PE', na=False)]
+                            
+                            merged = pd.merge(
+                                ce_df[['strike', 'symbol', 'token']].rename(columns={'symbol': 'CE_Symbol', 'token': 'CE_Token'}),
+                                pe_df[['strike', 'symbol', 'token']].rename(columns={'symbol': 'PE_Symbol', 'token': 'PE_Token'}),
+                                on='strike',
+                                how='inner'
+                            ).sort_values('strike').reset_index(drop=True)
+                            
+                            if not merged.empty:
+                                mid_len = len(merged) // 2
+                                start_idx = max(0, mid_len - 6)
+                                end_idx = min(len(merged), mid_len + 6)
+                                sub_merged = merged.iloc[start_idx:end_idx].copy()
+                                
+                                table_data = []
+                                for index, row in sub_merged.iterrows():
+                                    ce_ltp, pe_ltp = 0.0, 0.0
+                                    try:
+                                        res_ce = obj.ltpData("NFO", row['CE_Symbol'], row['CE_Token'])
+                                        if res_ce and 'data' in res_ce:
+                                            ce_ltp = res_ce['data'].get('ltp', 0.0)
+                                    except:
+                                        pass
+                                        
+                                    try:
+                                        res_pe = obj.ltpData("NFO", row['PE_Symbol'], row['PE_Token'])
+                                        if res_pe and 'data' in res_pe:
+                                            pe_ltp = res_pe['data'].get('ltp', 0.0)
+                                    except:
+                                        pass
+                                        
+                                    table_data.append({
+                                        "Call LTP": ce_ltp,
+                                        "Call Symbol": row['CE_Symbol'],
+                                        "Strike Price": row['strike'],
+                                        "Put Symbol": row['PE_Symbol'],
+                                        "Put LTP": pe_ltp
+                                    })
+                                    
+                                final_df = pd.DataFrame(table_data)
+                                final_df = final_df[["Call LTP", "Call Symbol", "Strike Price", "Put Symbol", "Put LTP"]]
+                                
+                                st.success(f"✨ Option Chain Loaded at {time.strftime('%H:%M:%S')}")
+                                st.dataframe(final_df, use_container_width=True, hide_index=True)
+                            else:
+                                st.warning("No contracts found for this expiry.")
                 else:
-                    st.warning("No options data available.")
+                    st.warning("No index options available.")
             else:
-                st.error("Could not load database.")
+                st.error("Failed to load Master Scrip database.")
         else:
             st.error(f"Login Failed: {data.get('message', 'Unknown error')}")
             
     except Exception as e:
-        st.error(f"Error: {e}")
+        st.error(f"System Error: {e}")
 else:
-    st.warning("Please configure API secrets.")
+    st.warning("Please configure your API credentials in Streamlit Secrets.")
