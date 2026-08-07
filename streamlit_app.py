@@ -1,11 +1,13 @@
 import streamlit as st
 from SmartApi import SmartConnect
+from SmartApi.smartWebSocketV2 import SmartWebSocketV2
 import pyotp
 import requests
 import pandas as pd
+import threading
 
 st.set_page_config(layout="wide")
-st.title("📊 Aditi Angel One - Live Option Chain")
+st.title("⚡ Aditi Angel One - Live WebSocket Option Chain")
 
 api_key = st.secrets.get("API_KEY")
 client_id = st.secrets.get("CLIENT_ID")
@@ -27,7 +29,9 @@ if api_key and client_id and pin and token:
         data = obj.generateSession(client_id, pin, totp)
         
         if data and data.get('status'):
-            st.success("🟢 Connected to Angel One Successfully!")
+            st.success("🟢 Connected to Angel One & Ready for WebSocket Stream!")
+            
+            feed_token = data['data'].get('feedToken')
             
             with st.spinner("Loading Market Database..."):
                 df = load_script_master()
@@ -46,62 +50,71 @@ if api_key and client_id and pin and token:
                     with col2:
                         expiry_choice = st.selectbox("Select Expiry:", expiries)
                     
-                    if st.button("🚀 Load Option Chain"):
-                        with st.spinner("Fetching Live Market Prices..."):
-                            filtered = index_options[index_options['expiry'] == expiry_choice]
-                            filtered['strike'] = pd.to_numeric(filtered['strike'], errors='coerce') / 100.0
+                    if st.button("🚀 Initialize Live WebSocket Stream"):
+                        filtered = index_options[index_options['expiry'] == expiry_choice]
+                        filtered['strike'] = pd.to_numeric(filtered['strike'], errors='coerce') / 100.0
+                        
+                        ce_df = filtered[filtered['symbol'].str.endswith('CE', na=False)]
+                        pe_df = filtered[filtered['symbol'].str.endswith('PE', na=False)]
+                        
+                        merged = pd.merge(
+                            ce_df[['strike', 'symbol', 'token']].rename(columns={'symbol': 'CE_Symbol', 'token': 'CE_Token'}),
+                            pe_df[['strike', 'symbol', 'token']].rename(columns={'symbol': 'PE_Symbol', 'token': 'PE_Token'}),
+                            on='strike',
+                            how='inner'
+                        ).sort_values('strike').reset_index(drop=True)
+                        
+                        if not merged.empty:
+                            mid_len = len(merged) // 2
+                            start_idx = max(0, mid_len - 8)
+                            end_idx = min(len(merged), mid_len + 8)
+                            sub_merged = merged.iloc[start_idx:end_idx].copy()
                             
-                            ce_df = filtered[filtered['symbol'].str.endswith('CE', na=False)]
-                            pe_df = filtered[filtered['symbol'].str.endswith('PE', na=False)]
-                            
-                            merged = pd.merge(
-                                ce_df[['strike', 'symbol', 'token']].rename(columns={'symbol': 'CE_Symbol', 'token': 'CE_Token'}),
-                                pe_df[['strike', 'symbol', 'token']].rename(columns={'symbol': 'PE_Symbol', 'token': 'PE_Token'}),
-                                on='strike',
-                                how='inner'
-                            ).sort_values('strike').reset_index(drop=True)
-                            
-                            if not merged.empty:
-                                mid_len = len(merged) // 2
-                                start_idx = max(0, mid_len - 8)
-                                end_idx = min(len(merged), mid_len + 8)
-                                sub_merged = merged.iloc[start_idx:end_idx].copy()
+                            # टोकन लिस्ट तैयार करना जो WebSocket से जोड़ी जाएगी
+                            token_list = []
+                            for idx, row in sub_merged.iterrows():
+                                token_list.append(str(row['CE_Token']))
+                                token_list.append(str(row['PE_Token']))
                                 
-                                table_data = []
-                                for index, row in sub_merged.iterrows():
-                                    try:
-                                        ce_res = obj.ltpData("NFO", row['CE_Symbol'], row['CE_Token'])
-                                        ce_ltp = ce_res['data']['ltp'] if ce_res and 'data' in ce_res else 0.0
-                                    except:
-                                        ce_ltp = 0.0
-                                        
-                                    try:
-                                        pe_res = obj.ltpData("NFO", row['PE_Symbol'], row['PE_Token'])
-                                        pe_ltp = pe_res['data']['ltp'] if pe_res and 'data' in pe_res else 0.0
-                                    except:
-                                        pe_ltp = 0.0
-                                        
-                                    table_data.append({
-                                        "Call LTP": ce_ltp,
-                                        "Call Symbol": row['CE_Symbol'],
-                                        "Strike Price": row['strike'],
-                                        "Put Symbol": row['PE_Symbol'],
-                                        "Put LTP": pe_ltp
-                                    })
-                                    
-                                final_df = pd.DataFrame(table_data)
-                                
-                                # स्ट्रीमलिट का आधुनिक और साफ़-सुथरा डेटाफ्रेम लेआउट
-                                st.dataframe(
-                                    final_df, 
-                                    use_container_width=True, 
-                                    hide_index=True
+                            st.info(f"Connecting to WebSocket for {len(token_list)} contracts...")
+                            
+                            # WebSocket कॉलबैक फंग्शन
+                            def on_data(wsapp, message):
+                                st.write("Live Tick:", message)
+
+                            def on_open(wsapp):
+                                st.success("WebSocket Connection Established!")
+                                # सब्सक्रिप्शन भेजना (मोड 2 = LTP)
+                                sws.sub(
+                                    correlation_id="stream_1",
+                                    mode=2,
+                                    token_list=[{"exchangeType": 2, "tokens": token_list}]
                                 )
-                                st.success("✨ ऑप्शन चेन सफलतापूर्वक लोड हो गई है!")
-                            else:
-                                st.warning("No option data found.")
+
+                            def on_error(wsapp, error):
+                                st.error(f"WebSocket Error: {error}")
+
+                            def on_close(wsapp, close_status_code, close_msg):
+                                st.warning("WebSocket Connection Closed.")
+
+                            # WebSocket ऑब्जेक्ट बनाना
+                            sws = SmartWebSocketV2(auth_token=data['data']['jwtToken'], api_key=api_key, client_code=client_id, feed_token=feed_token)
+                            
+                            sws.on_open = on_open
+                            sws.on_data = on_data
+                            sws.on_error = on_error
+                            sws.on_close = on_close
+                            
+                            # बैकग्राउंड थ्रेड में WebSocket चलाना ताकि ऐप हैंग न हो
+                            wst = threading.Thread(target=sws.connect)
+                            wst.daemon = True
+                            wst.start()
+                            
+                            st.success("✨ WebSocket बैकग्राउंड में लाइव डेटा स्ट्रीम करना शुरू कर चुका है!")
+                        else:
+                            st.warning("No contracts found.")
                 else:
-                    st.warning("No options data available.")
+                    st.warning("No data available.")
             else:
                 st.error("Could not load database.")
         else:
