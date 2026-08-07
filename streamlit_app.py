@@ -32,23 +32,24 @@ if api_key and client_id and pin and token:
                 df = load_script_master()
                 
             if not df.empty:
-                user_input = st.text_input("Enter Symbol (e.g. RELIANCE-EQ, NIFTY):", "").strip().upper()
+                user_input = st.text_input("Enter Symbol / Option (e.g. RELIANCE-EQ, NIFTY, 24650CE):", "").strip().upper()
                 
                 if st.button("Get Live Price"):
                     if user_input:
-                        # कॉमन नामों के शॉर्टकट और ऑटो-करेक्शन नियम
+                        # सामान्य शॉर्टकट और ऑप्शन फॉर्मेट ठीक करना
                         if user_input in ["NIFTY 50", "NIFTY50"]:
                             user_input = "NIFTY"
                         elif user_input in ["BANK NIFTY", "BANKNIFTY"]:
                             user_input = "BANKNIFTY"
-                        elif user_input == "TATA STEEL":
-                            user_input = "TATASTEEL"
-                        elif user_input == "TATA MOTORS":
-                            user_input = "TATAMOTORS"
-                        elif user_input == "TATA CONSUMER":
-                            user_input = "TATACONSUM"
-                            
-                        # सटीक मिलान या आंशिक मिलान खोजना
+                        
+                        # अगर यूजर ने स्ट्राइक प्राइस या CE/PE लिखा हो (जैसे NIFTY 24650 CE)
+                        # तो स्पेस हटाकर NIFTY से जोड़ देना
+                        if "CE" in user_input or "PE" in user_input:
+                            user_input = user_input.replace(" ", "")
+                            if not user_input.startswith("NIFTY") and not user_input.startswith("BANKNIFTY"):
+                                user_input = "NIFTY" + user_input
+                        
+                        # डेटाबेस में खोजना
                         matched = df[df['symbol'] == user_input]
                         if matched.empty:
                             matched = df[df['symbol'].str.contains(user_input, na=False)]
@@ -67,7 +68,7 @@ if api_key and client_id and pin and token:
                             except Exception as err:
                                 st.error(f"Error fetching price: {err}")
                         else:
-                            st.warning("Symbol not found in database. Please check the spelling.")
+                            st.warning("Symbol not found in database. Try writing like 'NIFTY24650CE'.")
                     else:
                         st.warning("Please enter a valid symbol.")
             else:
