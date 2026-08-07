@@ -1,27 +1,32 @@
 import streamlit as st
+from SmartApi import SmartConnect
 
-st.title("Aditi Trading Dashboard")
-st.write("Welcome to your private trading automation panel.")
+st.title("Aditi Trading Dashboard - Full Market")
 
-# Streamlit secrets से सुरक्षित रूप से API Key चेक करना
-api_key = st.secrets.get("API_KEY", "Not Set")
+api_key = st.secrets.get("API_KEY")
+client_id = st.secrets.get("CLIENT_ID")
+pin = st.secrets.get("PIN")
 
-if api_key != "Not Set":
-    st.success("API Key loaded securely!")
-    
-    # ट्रेडिंग डैशबोर्ड का मेन इंटरफ़ेस
-    st.info("Your dashboard is connected and ready for live trading automation.")
-    
-    # यहाँ हम लाइव मार्केट इंडेक्स या ट्रेडिंग का स्टेटस जोड़ेंगे
-    col1, col2 = st.columns(2)
-    with col1:
-        st.metric(label="Nifty 50 Status", value="Connected", delta="Live")
-    with col2:
-        st.metric(label="Bank Nifty Status", value="Connected", delta="Live")
+if api_key and client_id and pin:
+    try:
+        obj = SmartConnect(api_key=api_key)
+        data = obj.generateSession(client_id, pin)
+        st.success("Connected to Angel One!")
+
+        # स्टॉक सर्च करने के लिए इनपुट बॉक्स
+        symbol = st.text_input("Enter Stock Symbol (e.g. SBIN, RELIANCE):", "").upper()
         
-    if st.button("Fetch Market Data"):
-        st.write("Fetching live feed from Angel One API...")
-        # यहाँ आगे चलकर लाइव आर्डर और पोजीशन का डेटा दिखेगा
+        if st.button("Get Live Price"):
+            if symbol:
+                # यहाँ हम NSE का सिंबल डालकर प्राइस फेच करते हैं
+                # नोट: इसके लिए 'symboltoken' की जरूरत होती है
+                st.write(f"Fetching live price for {symbol}...")
+                # भविष्य में यहाँ हम टोकन मैप का इस्तेमाल करेंगे
+            else:
+                st.warning("Please enter a valid stock symbol.")
+                
+    except Exception as e:
+        st.error(f"Login Failed: {e}")
 else:
-    st.warning("Please configure your API_KEY in Streamlit Secrets.")
-
+    st.warning("Please configure API_KEY, CLIENT_ID, and PIN in Secrets.")
+    
