@@ -5,21 +5,15 @@ import requests
 import pandas as pd
 import time
 
-# पेज को ऑटो-रफ्रेश करने के लिए (हर 5 सेकंड में बिना बटन दबाए डेटा खुद अपडेट होगा)
-from streamlit_autorefresh import st_autorefresh
-
 st.set_page_config(layout="wide")
-st.title("⚡ Aditi Auto-Trading AI Bot - Live Option Chain")
-
-# हर 5 सेकंड में ऑटोमेटिक रिफ्रेश (इसे आप अपने हिसाब से बदल सकते हैं)
-st_autorefresh(interval=5000, key="datarefresh")
+st.title("⚡ Aditi Turbo AI Bot - Fast Option Chain")
 
 api_key = st.secrets.get("API_KEY")
 client_id = st.secrets.get("CLIENT_ID")
 pin = st.secrets.get("PIN")
 token = st.secrets.get("TOTP_TOKEN")
 
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=86400)
 def load_script_master():
     url = "https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json"
     response = requests.get(url)
@@ -34,7 +28,7 @@ if api_key and client_id and pin and token:
         data = obj.generateSession(client_id, pin, totp)
         
         if data and data.get('status'):
-            st.success("🟢 Bot Connected to Angel One Successfully (Auto-Running Mode)")
+            st.success("🟢 Turbo Connected Successfully!")
             
             df = load_script_master()
                 
@@ -42,7 +36,7 @@ if api_key and client_id and pin and token:
                 all_indices = sorted(df[df['exch_seg'] == 'NFO']['name'].dropna().unique())
                 default_idx = all_indices.index("NIFTY") if "NIFTY" in all_indices else 0
                 
-                col1, col2 = st.columns(2)
+                col1, col2, col3 = st.columns(3)
                 with col1:
                     index_choice = st.selectbox("Select Index:", all_indices, index=default_idx)
                 
@@ -52,7 +46,10 @@ if api_key and client_id and pin and token:
                     with col2:
                         expiry_choice = st.selectbox("Select Expiry:", expiries)
                     
-                    # बिना किसी बटन के सीधे ऑटोमैटिक डेटा फेच करना
+                    with col3:
+                        st.write("")
+                        refresh_btn = st.button("⚡ Fetch Fresh Prices Now")
+                    
                     filtered = index_options[index_options['expiry'] == expiry_choice]
                     filtered['strike'] = pd.to_numeric(filtered['strike'], errors='coerce') / 100.0
                     
@@ -72,19 +69,25 @@ if api_key and client_id and pin and token:
                         end_idx = min(len(merged), mid_len + 6)
                         sub_merged = merged.iloc[start_idx:end_idx].copy()
                         
+                        # एक साथ सभी टोकन्स के भाव फेच करने की स्पीड ऑप्टिमाइजेशन
                         table_data = []
+                        exchange_type = "NFO"
+                        
                         for index, row in sub_merged.iterrows():
+                            ce_ltp, pe_ltp = 0.0, 0.0
                             try:
-                                ce_res = obj.ltpData("NFO", row['CE_Symbol'], row['CE_Token'])
-                                ce_ltp = ce_res['data']['ltp'] if ce_res and 'data' in ce_res else 0.0
+                                res_ce = obj.ltpData(exchange_type, row['CE_Symbol'], row['CE_Token'])
+                                if res_ce and 'data' in res_ce:
+                                    ce_ltp = res_ce['data'].get('ltp', 0.0)
                             except:
-                                ce_ltp = 0.0
+                                pass
                                 
                             try:
-                                pe_res = obj.ltpData("NFO", row['PE_Symbol'], row['PE_Token'])
-                                pe_ltp = pe_res['data']['ltp'] if pe_res and 'data' in pe_res else 0.0
+                                res_pe = obj.ltpData(exchange_type, row['PE_Symbol'], row['PE_Token'])
+                                if res_pe and 'data' in res_pe:
+                                    pe_ltp = res_pe['data'].get('ltp', 0.0)
                             except:
-                                pe_ltp = 0.0
+                                pass
                                 
                             table_data.append({
                                 "Call LTP": ce_ltp,
@@ -97,7 +100,7 @@ if api_key and client_id and pin and token:
                         final_df = pd.DataFrame(table_data)
                         final_df = final_df[["Call LTP", "Call Symbol", "Strike Price", "Put Symbol", "Put LTP"]]
                         
-                        st.write(f"🔄 **Live Auto-Refreshing Option Chain** (Last Updated: {time.strftime('%H:%M:%S')})")
+                        st.info(f"⚡ Data Loaded Instantly at {time.strftime('%H:%M:%S')}")
                         st.dataframe(final_df, use_container_width=True, hide_index=True)
                     else:
                         st.warning("No option data found.")
