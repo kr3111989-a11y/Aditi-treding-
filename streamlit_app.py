@@ -10,21 +10,27 @@ from datetime import datetime
 from streamlit_autorefresh import st_autorefresh
 
 st.set_page_config(layout="wide")
-st.title("⚡ Aditi AI: Live 1-Second Multi-Indicator Engine")
+st.title("⚡ Aditi AI: Ultra-Active Live Engine")
 
-# हर 1 सेकंड में स्क्रीन रिफ्रेश होगी
+# हर 1 सेकंड में रिफ्रेश
 st_autorefresh(interval=1000, key="datarefresh")
 
 if 'signal_history' not in st.session_state:
     st.session_state['signal_history'] = []
 
-class AdvancedTradingBrain:
+class FlexibleTradingBrain:
     def evaluate_strategy(self, symbol, price_history):
-        if len(price_history) < 20: return "WAIT", "Collecting..."
+        if len(price_history) < 5: return "WAIT", "Loading..."
+        
+        # बहुत ही हल्का और लचीला लॉजिक
         current_price = price_history[-1]
-        ema_20 = np.mean(price_history[-20:])
-        if current_price > ema_20:
-            return "BUY_1_LOT", "Trend Bullish"
+        prev_price = price_history[-2]
+        
+        # अगर सिर्फ पिछले भाव से भाव बढ़ गया, तो सिग्नल दे दो (Ultra-Fast)
+        if current_price > prev_price:
+            return "BUY_1_LOT", f"Price Up: {current_price}"
+        elif current_price < prev_price:
+            return "SELL_1_LOT", f"Price Down: {current_price}"
         return "WAIT", "Neutral"
 
 def master_background_worker():
@@ -37,7 +43,7 @@ def master_background_worker():
     totp = pyotp.TOTP(str(token).strip()).now()
     obj.generateSession(client_id, pin, totp)
     
-    symbols = {"NIFTY 50": "99926000", "BANK NIFTY": "99926009", "RELIANCE": "2885"}
+    symbols = {"NIFTY 50": "99926000", "BANK NIFTY": "99926009"}
     trackers = {s: [] for s in symbols}
     
     while True:
@@ -46,11 +52,13 @@ def master_background_worker():
                 data = obj.ltpData("NSE", name, tid)
                 price = data['data']['ltp']
                 trackers[name].append(price)
-                if len(trackers[name]) > 30: trackers[name].pop(0)
+                if len(trackers[name]) > 10: trackers[name].pop(0)
                 
-                signal, reason = AdvancedTradingBrain().evaluate_strategy(name, trackers[name])
-                if signal == "BUY_1_LOT":
-                    log = {"Time": datetime.now().strftime("%H:%M:%S"), "Symbol": name, "Action": "BUY 1 LOT", "Price": price}
+                signal, reason = FlexibleTradingBrain().evaluate_strategy(name, trackers[name])
+                
+                # अब यह हर छोटे मूवमेंट पर एंट्री करेगा
+                if signal != "WAIT":
+                    log = {"Time": datetime.now().strftime("%H:%M:%S"), "Symbol": name, "Action": signal, "Price": price}
                     if not st.session_state['signal_history'] or st.session_state['signal_history'][0]['Time'] != log['Time']:
                         st.session_state['signal_history'].insert(0, log)
             except: pass
@@ -60,5 +68,5 @@ if 'started' not in st.session_state:
     threading.Thread(target=master_background_worker, daemon=True).start()
     st.session_state['started'] = True
 
-st.success("🟢 BOT ACTIVE: Live Scanning & Auto-Refreshing Every 1 Second")
+st.success("🟢 ULTRA-ACTIVE MODE: Scanning every small tick...")
 st.table(st.session_state['signal_history'])
