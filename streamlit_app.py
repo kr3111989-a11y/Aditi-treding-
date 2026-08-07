@@ -1,117 +1,53 @@
-import streamlit as st
-from SmartApi import SmartConnect
-import pyotp
-import requests
-import pandas as pd
 import time
+import pyotp
+from SmartApi import SmartConnect
 
-st.set_page_config(layout="wide")
-st.title("⚡ Aditi AI Trading Bot - Final Option Chain")
+# API क्रेडेंशियल्स (इन्हें सीधे यहाँ या एनवायरनमेंट वेरिएबल्स में सेट करें)
+API_KEY = "YOUR_API_KEY"
+CLIENT_ID = "YOUR_CLIENT_ID"
+PIN = "YOUR_PIN"
+TOTP_TOKEN = "YOUR_TOTP_TOKEN"
 
-# सीक्रेट्स लोड करना
-api_key = st.secrets.get("API_KEY")
-client_id = st.secrets.get("CLIENT_ID")
-pin = st.secrets.get("PIN")
-token = st.secrets.get("TOTP_TOKEN")
-
-@st.cache_data(ttl=86400)
-def load_script_master():
-    url = "https://margincalculator.angelbroking.com/OpenAPI_File/files/OpenAPIScripMaster.json"
-    response = requests.get(url)
-    if response.status_code == 200:
-        return pd.DataFrame(response.json())
-    return pd.DataFrame()
-
-if api_key and client_id and pin and token:
-    try:
-        obj = SmartConnect(api_key=api_key)
-        totp = pyotp.TOTP(token).now()
-        data = obj.generateSession(client_id, pin, totp)
+def start_turbo_bot():
+    print("🔄 Connecting to Angel One Server...")
+    obj = SmartConnect(api_key=API_KEY)
+    totp = pyotp.TOTP(TOTP_TOKEN).now()
+    data = obj.generateSession(CLIENT_ID, PIN, totp)
+    
+    if data and data.get('status'):
+        print("🟢 Connected Successfully! Turbo Engine is Running...")
         
-        if data and data.get('status'):
-            st.success("🟢 Angel One Connected & System Ready!")
-            
-            df = load_script_master()
+        # यहाँ आपका 10-पॉइंट ट्रेडिंग लॉजिक और लाइव लूप चलेगा
+        while True:
+            try:
+                # उदाहरण के लिए Nifty का लाइव भाव चेक करना या स्ट्राइक ट्रैक करना
+                # जैसे ही आपका 10-पॉइंट नियम मैच होगा, यह तुरंत आर्डर पंच कर देगा
                 
-            if not df.empty:
-                all_indices = sorted(df[df['exch_seg'] == 'NFO']['name'].dropna().unique())
-                default_idx = all_indices.index("NIFTY") if "NIFTY" in all_indices else 0
+                # नीचे आर्डर प्लेसमेंट का फॉर्मेट:
+                # orderparams = {
+                #     "variety": "NORMAL",
+                #     "tradingsymbol": "NIFTY26SEP2424500CE",
+                #     "symboltoken": "YOUR_TOKEN",
+                #     "transactiontype": "BUY",
+                #     "exchange": "NFO",
+                #     "ordertype": "MARKET",
+                #     "producttype": "INTRADAY",
+                #     "duration": "DAY",
+                #     "price": "0",
+                #     "squareoff": "0",
+                #     "stoploss": "0",
+                #     "quantity": "25"
+                # }
+                # orderId = obj.placeOrder(orderparams)
+                # print(f"Order Placed Successfully! Order ID: {orderId}")
                 
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    index_choice = st.selectbox("Select Index:", all_indices, index=default_idx)
+                time.sleep(0.5) # बिना किसी लैग के मिलीसेकंड्स में चेकिंग
                 
-                index_options = df[(df['name'] == index_choice) & (df['exch_seg'] == 'NFO')]
-                if not index_options.empty:
-                    expiries = sorted(index_options['expiry'].dropna().unique())
-                    with col2:
-                        expiry_choice = st.selectbox("Select Expiry:", expiries)
-                    
-                    with col3:
-                        st.write("")
-                        fetch_clicked = st.button("🚀 Load & Analyze Option Chain")
-                    
-                    if fetch_clicked:
-                        with st.spinner("Fetching market data..."):
-                            filtered = index_options[index_options['expiry'] == expiry_choice]
-                            filtered['strike'] = pd.to_numeric(filtered['strike'], errors='coerce') / 100.0
-                            
-                            ce_df = filtered[filtered['symbol'].str.endswith('CE', na=False)]
-                            pe_df = filtered[filtered['symbol'].str.endswith('PE', na=False)]
-                            
-                            merged = pd.merge(
-                                ce_df[['strike', 'symbol', 'token']].rename(columns={'symbol': 'CE_Symbol', 'token': 'CE_Token'}),
-                                pe_df[['strike', 'symbol', 'token']].rename(columns={'symbol': 'PE_Symbol', 'token': 'PE_Token'}),
-                                on='strike',
-                                how='inner'
-                            ).sort_values('strike').reset_index(drop=True)
-                            
-                            if not merged.empty:
-                                mid_len = len(merged) // 2
-                                start_idx = max(0, mid_len - 6)
-                                end_idx = min(len(merged), mid_len + 6)
-                                sub_merged = merged.iloc[start_idx:end_idx].copy()
-                                
-                                table_data = []
-                                for index, row in sub_merged.iterrows():
-                                    ce_ltp, pe_ltp = 0.0, 0.0
-                                    try:
-                                        res_ce = obj.ltpData("NFO", row['CE_Symbol'], row['CE_Token'])
-                                        if res_ce and 'data' in res_ce:
-                                            ce_ltp = res_ce['data'].get('ltp', 0.0)
-                                    except:
-                                        pass
-                                        
-                                    try:
-                                        res_pe = obj.ltpData("NFO", row['PE_Symbol'], row['PE_Token'])
-                                        if res_pe and 'data' in res_pe:
-                                            pe_ltp = res_pe['data'].get('ltp', 0.0)
-                                    except:
-                                        pass
-                                        
-                                    table_data.append({
-                                        "Call LTP": ce_ltp,
-                                        "Call Symbol": row['CE_Symbol'],
-                                        "Strike Price": row['strike'],
-                                        "Put Symbol": row['PE_Symbol'],
-                                        "Put LTP": pe_ltp
-                                    })
-                                    
-                                final_df = pd.DataFrame(table_data)
-                                final_df = final_df[["Call LTP", "Call Symbol", "Strike Price", "Put Symbol", "Put LTP"]]
-                                
-                                st.success(f"✨ Option Chain Loaded at {time.strftime('%H:%M:%S')}")
-                                st.dataframe(final_df, use_container_width=True, hide_index=True)
-                            else:
-                                st.warning("No contracts found for this expiry.")
-                else:
-                    st.warning("No index options available.")
-            else:
-                st.error("Failed to load Master Scrip database.")
-        else:
-            st.error(f"Login Failed: {data.get('message', 'Unknown error')}")
-            
-    except Exception as e:
-        st.error(f"System Error: {e}")
-else:
-    st.warning("Please configure your API credentials in Streamlit Secrets.")
+            except Exception as e:
+                print(f"Error in execution loop: {e}")
+                time.sleep(1)
+    else:
+        print("❌ Login Failed. Please check credentials.")
+
+if __name__ == "__main__":
+    start_turbo_bot()
