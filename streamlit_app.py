@@ -4,7 +4,8 @@ import pyotp
 import requests
 import pandas as pd
 
-st.title("Aditi Trading Dashboard - Option Chain Analysis")
+st.set_page_config(layout="wide")
+st.title("Aditi Trading Dashboard - Smart Option Chain")
 
 api_key = st.secrets.get("API_KEY")
 client_id = st.secrets.get("CLIENT_ID")
@@ -32,26 +33,49 @@ if api_key and client_id and pin and token:
                 df = load_script_master()
                 
             if not df.empty:
-                # इंडेक्स चुनने के लिए ऑप्शन
-                index_choice = st.selectbox("Select Index for Option Chain:", ["NIFTY", "BANKNIFTY"])
+                # सभी उपलब्ध इंडेक्स की लिस्ट निकालना
+                all_indices = sorted(df[df['exch_seg'] == 'NFO']['name'].dropna().unique())
+                default_idx = all_indices.index("NIFTY") if "NIFTY" in all_indices else 0
                 
-                if st.button("Get Option Chain"):
-                    with st.spinner(f"Fetching Option Chain for {index_choice}..."):
-                        # NFO सेगमेंट से उस इंडेक्स के ऑप्शंस को फिल्टर करना
-                        option_df = df[(df['name'] == index_choice) & (df['exch_seg'] == 'NFO')]
-                        
-                        if not option_df.empty:
-                            # शुरुआती कुछ स्ट्राइक्स या डेटा दिखाने के लिए टेबल तैयार करना
-                            st.write(f"Total Option Contracts found for {index_choice}: {len(option_df)}")
+                col1, col2 = st.columns(2)
+                with col1:
+                    index_choice = st.selectbox("Select Index:", all_indices, index=default_idx)
+                
+                # उस इंडेक्स की उपलब्ध एक्सपायरी डेट्स निकालना
+                index_options = df[(df['name'] == index_choice) & (df['exch_seg'] == 'NFO')]
+                if not index_options.empty:
+                    expiries = sorted(index_options['expiry'].dropna().unique())
+                    with col2:
+                        expiry_choice = st.selectbox("Select Expiry:", expiries)
+                    
+                    if st.button("Load Option Chain View"):
+                        with st.spinner("Formatting Option Chain..."):
+                            # चुनी गई एक्सपायरी और इंडेक्स के कॉन्ट्रैक्ट्स
+                            filtered = index_options[index_options['expiry'] == expiry_choice]
                             
-                            # यूजर को आसानी से देखने के लिए मुख्य कॉलम दिखाना
-                            display_cols = ['symbol', 'strike', 'instrumenttype', 'expiry', 'token']
-                            available_cols = [col for col in display_cols if col in option_df.columns]
+                            # स्ट्राइक प्राइस को सही फॉर्मेट में बदलना
+                            filtered['strike'] = pd.to_numeric(filtered['strike'], errors='coerce') / 100.0
                             
-                            st.dataframe(option_df[available_cols].head(50))
-                            st.info("ऊपर दिए गए सिंबल या टोकन का उपयोग करके आप लाइव एलटीपी (LTP) ट्रैक कर सकते हैं।")
-                        else:
-                            st.warning("Option chain data not found.")
+                            # CE और PE को अलग करना
+                            ce_df = filtered[filtered['symbol'].str.endswith('CE', na=False)]
+                            pe_df = filtered[filtered['symbol'].str.endswith('PE', na=False)]
+                            
+                            # स्ट्राइक के हिसाब से मर्ज करना ताकि ऐप जैसा व्यू मिले
+                            merged = pd.merge(
+                                ce_df[['strike', 'symbol', 'token']].rename(columns={'symbol': 'CE_Symbol', 'token': 'CE_Token'}),
+                                pe_df[['strike', 'symbol', 'token']].rename(columns={'symbol': 'PE_Symbol', 'token': 'PE_Token'}),
+                                on='strike',
+                                how='inner'
+                            ).sort_values('strike')
+                            
+                            if not merged.empty:
+                                st.write(f"### Option Chain for {index_choice} (Expiry: {expiry_choice})")
+                                st.dataframe(merged.reset_index(drop=True), use_container_width=True)
+                                st.info("यह ऑप्शन चेन व्यू अब स्ट्राइक प्राइस के हिसाब से व्यवस्थित है।")
+                            else:
+                                st.warning("No matching CE/PE data found for this expiry.")
+                else:
+                    st.warning("No options data available for this index.")
             else:
                 st.error("Could not load Scrip Master database.")
         else:
