@@ -5,21 +5,6 @@ import requests
 import pandas as pd
 
 st.set_page_config(layout="wide")
-
-# एंजेल वन जैसा डार्क थीम और स्टाइल सेट करना
-st.markdown("""
-    <style>
-    .main { background-color: #0e1117; color: #ffffff; }
-    .stSelectbox, .stButton { font-size: 16px; }
-    table { width: 100%; border-collapse: collapse; background-color: #161b22; color: #fff; }
-    th { background-color: #21262d; color: #8b949e; text-align: center; padding: 10px; border: 1px solid #30363d; }
-    td { text-align: center; padding: 8px; border: 1px solid #30363d; }
-    .call-side { background-color: rgba(35, 134, 54, 0.15); color: #3fb950; font-weight: bold; }
-    .put-side { background-color: rgba(248, 81, 73, 0.15); color: #f85149; font-weight: bold; }
-    .strike-price { background-color: #21262d; color: #f0f6fc; font-weight: bold; font-size: 16px; }
-    </style>
-""", unsafe_allow_html=True)
-
 st.title("⚡ Aditi Angel One Pro Option Chain")
 
 api_key = st.secrets.get("API_KEY")
@@ -77,23 +62,12 @@ if api_key and client_id and pin and token:
                             ).sort_values('strike').reset_index(drop=True)
                             
                             if not merged.empty:
-                                # ऐप की तरह बीच के 14 स्ट्राइक्स लेना ताकि स्पीड तेज रहे
                                 mid_len = len(merged) // 2
                                 start_idx = max(0, mid_len - 7)
                                 end_idx = min(len(merged), mid_len + 7)
                                 sub_merged = merged.iloc[start_idx:end_idx].copy()
                                 
-                                table_html = """
-                                <table>
-                                    <tr>
-                                        <th>Call Symbol</th>
-                                        <th>Call LTP (₹)</th>
-                                        <th>Strike Price</th>
-                                        <th>Put LTP (₹)</th>
-                                        <th>Put Symbol</th>
-                                    </tr>
-                                """
-                                
+                                table_data = []
                                 for index, row in sub_merged.iterrows():
                                     try:
                                         ce_res = obj.ltpData("NFO", row['CE_Symbol'], row['CE_Token'])
@@ -107,19 +81,17 @@ if api_key and client_id and pin and token:
                                     except:
                                         pe_ltp = 0.0
                                         
-                                    table_html += f"""
-                                    <tr>
-                                        <td style="color: #8b949e; font-size: 12px;">{row['CE_Symbol']}</td>
-                                        <td class="call-side">₹{ce_ltp}</td>
-                                        <td class="strike-price">{row['strike']}</td>
-                                        <td class="put-side">₹{pe_ltp}</td>
-                                        <td style="color: #8b949e; font-size: 12px;">{row['PE_Symbol']}</td>
-                                    </tr>
-                                    """
+                                    table_data.append({
+                                        "Call Symbol": row['CE_Symbol'],
+                                        "Call LTP (₹)": ce_ltp,
+                                        "Strike Price": row['strike'],
+                                        "Put LTP (₹)": pe_ltp,
+                                        "Put Symbol": row['PE_Symbol']
+                                    })
                                     
-                                table_html += "</table>"
-                                st.markdown(table_html, unsafe_allow_html=True)
-                                st.success("✨ ऑप्शन चेन अब बिल्कुल एंजेल वन के डार्क लेआउट फॉर्मेट में दिख रही है!")
+                                final_df = pd.DataFrame(table_data)
+                                st.dataframe(final_df, use_container_width=True, hide_index=True)
+                                st.success("✨ ऑप्शन चेन अब बिल्कुल सही फॉर्मेट में लोड हो गई है!")
                             else:
                                 st.warning("No data found.")
                 else:
